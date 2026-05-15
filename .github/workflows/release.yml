@@ -1,0 +1,113 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    name: Build Windows MSI
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install stable Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build release binary
+        run: cargo build --release --locked
+
+      - name: Install cargo-wix
+        run: cargo install cargo-wix --locked
+
+      - name: Build MSI installer
+        run: cargo wix --no-build --nocapture --output target/wix/discord_rich-${{ github.ref_name }}-x86_64.msi
+
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-artifacts
+          path: |
+            target/release/discord_rich.exe
+            target/wix/*.msi
+
+  build-linux:
+    name: Build Linux DEB
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install stable Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            pkg-config \
+            libgtk-3-dev \
+            libxdo-dev \
+            libayatana-appindicator3-dev \
+            libssl-dev
+
+      - name: Build release binary
+        run: cargo build --release --locked
+
+      - name: Install cargo-deb
+        run: cargo install cargo-deb --locked
+
+      - name: Build DEB package
+        run: cargo deb --no-build --output target/debian/
+
+      - name: Upload Linux artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-artifacts
+          path: |
+            target/release/discord_rich
+            target/debian/*.deb
+
+  release:
+    name: Publish GitHub Release
+    needs: [build-windows, build-linux]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download Windows artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-artifacts
+          path: dist/windows
+
+      - name: Download Linux artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: linux-artifacts
+          path: dist/linux
+
+      - name: Show collected artifacts
+        run: ls -lR dist
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ github.ref_name }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: |
+            dist/windows/wix/*.msi
+            dist/windows/release/discord_rich.exe
+            dist/linux/debian/*.deb
+            dist/linux/release/discord_rich
