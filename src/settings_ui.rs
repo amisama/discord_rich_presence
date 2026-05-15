@@ -24,13 +24,33 @@ pub fn open(state: Arc<WorkerState>) {
             let initial = state.config.lock().clone();
             let app = SettingsApp::new(state.clone(), initial);
 
-            let options = eframe::NativeOptions {
+            let mut options = eframe::NativeOptions {
                 viewport: egui::ViewportBuilder::default()
                     .with_inner_size([520.0, 600.0])
                     .with_min_inner_size([460.0, 480.0])
                     .with_title("discord_rich settings"),
                 ..Default::default()
             };
+
+            // winit normally refuses to start an event loop off the main
+            // thread on Windows and Wayland. We're explicitly opting in here
+            // because we run egui in a dedicated worker thread so the tray
+            // event loop stays responsive on the main thread.
+            options.event_loop_builder = Some(Box::new(|builder| {
+                #[cfg(target_os = "windows")]
+                {
+                    use winit::platform::windows::EventLoopBuilderExtWindows;
+                    builder.with_any_thread(true);
+                }
+                #[cfg(all(unix, not(target_os = "macos")))]
+                {
+                    use winit::platform::wayland::EventLoopBuilderExtWayland;
+                    use winit::platform::x11::EventLoopBuilderExtX11;
+                    EventLoopBuilderExtWayland::with_any_thread(builder, true);
+                    EventLoopBuilderExtX11::with_any_thread(builder, true);
+                }
+                let _ = builder;
+            }));
 
             if let Err(e) = eframe::run_native(
                 "discord_rich settings",
