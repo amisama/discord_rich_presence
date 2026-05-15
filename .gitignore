@@ -1,0 +1,6 @@
+/target
+/dist
+*.log
+.DS_Store
+Thumbs.db
+config.local.toml

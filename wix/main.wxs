@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="windows-1252"?>
+<!--
+  WiX installer template for discord_rich.
+  Generated as a starting point for `cargo wix`. Edit fields marked TODO if needed.
+  Reference: https://wixtoolset.org/documentation/manual/v3/
+-->
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+    <Product Id="*"
+             Name="discord_rich"
+             UpgradeCode="8B5C9F4C-3D2E-4A1F-9E6B-2A1C8D7F0B12"
+             Manufacturer="amisama"
+             Language="1033"
+             Codepage="1252"
+             Version="$(var.Version)">
+
+        <Package Id="*"
+                 Keywords="Installer"
+                 Description="Custom Discord Rich Presence"
+                 Manufacturer="amisama"
+                 InstallerVersion="450"
+                 Languages="1033"
+                 Compressed="yes"
+                 InstallScope="perMachine"
+                 SummaryCodepage="1252" />
+
+        <MajorUpgrade Schedule="afterInstallInitialize"
+                      DowngradeErrorMessage="A newer version of [ProductName] is already installed. Setup will now exit." />
+
+        <Media Id="1" Cabinet="media1.cab" EmbedCab="yes" DiskPrompt="CD-ROM #1" />
+        <Property Id="DiskPrompt" Value="discord_rich Installation" />
+
+        <Directory Id="TARGETDIR" Name="SourceDir">
+            <Directory Id="ProgramFiles64Folder">
+                <Directory Id="APPLICATIONFOLDER" Name="discord_rich">
+                    <Component Id="MainExecutable" Guid="C9A8E1B4-5F22-4D7A-B9E3-7F4A6C2D9E80" Win64="yes">
+                        <File Id="discord_richEXE"
+                              Name="discord_rich.exe"
+                              DiskId="1"
+                              Source="target\$(var.Profile)\discord_rich.exe"
+                              KeyPath="yes" />
+                    </Component>
+                    <Component Id="LicenseFile" Guid="A1B2C3D4-E5F6-4789-9ABC-DEF012345678" Win64="yes">
+                        <File Id="LicenseTxt"
+                              Name="LICENSE"
+                              DiskId="1"
+                              Source="LICENSE"
+                              KeyPath="yes" />
+                    </Component>
+                </Directory>
+            </Directory>
+
+            <Directory Id="ProgramMenuFolder">
+                <Directory Id="ApplicationProgramsFolder" Name="discord_rich">
+                    <Component Id="ApplicationShortcut"
+                               Guid="F1E2D3C4-B5A6-4798-8765-432101FEDCBA"
+                               Win64="yes">
+                        <Shortcut Id="ApplicationStartMenuShortcut"
+                                  Name="discord_rich"
+                                  Description="Custom Discord Rich Presence"
+                                  Target="[APPLICATIONFOLDER]discord_rich.exe"
+                                  WorkingDirectory="APPLICATIONFOLDER" />
+                        <RemoveFolder Id="CleanUpShortCut" Directory="ApplicationProgramsFolder" On="uninstall" />
+                        <RegistryValue Root="HKCU"
+                                       Key="Software\amisama\discord_rich"
+                                       Name="installed"
+                                       Type="integer"
+                                       Value="1"
+                                       KeyPath="yes" />
+                    </Component>
+                </Directory>
+            </Directory>
+        </Directory>
+
+        <Feature Id="Complete"
+                 Title="discord_rich"
+                 Description="Installs the discord_rich application."
+                 Display="expand"
+                 Level="1"
+                 ConfigurableDirectory="APPLICATIONFOLDER">
+            <ComponentRef Id="MainExecutable" />
+            <ComponentRef Id="LicenseFile" />
+            <ComponentRef Id="ApplicationShortcut" />
+        </Feature>
+
+        <Property Id="ARPHELPLINK" Value="https://github.com/amisama/discord_rich_presence" />
+        <Property Id="ARPURLINFOABOUT" Value="https://github.com/amisama/discord_rich_presence" />
+
+        <UI>
+            <UIRef Id="WixUI_FeatureTree" />
+        </UI>
+    </Product>
+</Wix>

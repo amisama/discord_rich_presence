@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Discord Rich
+GenericName=Custom Discord Rich Presence
+Comment=Custom Discord Rich Presence with auto-detection of active apps
+Exec=discord_rich
+Icon=discord_rich
+Terminal=false
+Categories=Utility;Network;
+StartupNotify=false

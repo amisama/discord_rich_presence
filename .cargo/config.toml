@@ -1,0 +1,11 @@
+[build]
+# Faster incremental builds during development
+incremental = true
+
+# Note: We intentionally do NOT set `/SUBSYSTEM:WINDOWS` here as a global
+# rustflag — that would break linking of proc-macro DLLs (yoke-derive,
+# displaydoc, etc.) which do not have a `main` symbol.
+#
+# Instead, the `windows_subsystem = "windows"` attribute in src/main.rs
+# applies only to the final binary in release mode, leaving proc-macros
+# to build normally.
