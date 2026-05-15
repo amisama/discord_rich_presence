@@ -1,6 +1,6 @@
 [package]
 name = "discord_rich"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description = "Custom Discord Rich Presence with auto-detection of active apps (VSCode, Warp, SSH, browsers, etc.)"
 authors = ["amisama"]

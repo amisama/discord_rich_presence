@@ -2,16 +2,29 @@ use crate::settings_ui;
 use crate::worker::WorkerState;
 use anyhow::{Context, Result};
 use std::sync::Arc;
+use tao::event::Event;
 use tao::event_loop::{ControlFlow, EventLoopBuilder};
-use tray_icon::menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem};
+use tray_icon::menu::{Menu, MenuEvent, MenuId, MenuItem, PredefinedMenuItem};
 use tray_icon::{Icon, TrayIconBuilder, TrayIconEvent};
+
+/// Custom user event that wakes the tao event loop when a menu or tray
+/// click happens. Without this, menu clicks land on a side channel and the
+/// loop never reacts because it's parked on `ControlFlow::Wait`.
+enum UserEvent {
+    Menu(MenuEvent),
+    /// Tray icon clicks (left/right on the icon itself). We forward them so
+    /// the loop wakes, but we don't act on them — the popup menu handles
+    /// right-click for us.
+    #[allow(dead_code)]
+    Tray(TrayIconEvent),
+}
 
 /// Build, install, and run the tray icon. This call blocks until the user
 /// chooses "Quit" from the menu.
 pub fn run(state: Arc<WorkerState>) -> Result<()> {
     let event_loop = EventLoopBuilder::<UserEvent>::with_user_event().build();
 
-    // Build menu items. We keep handles around so we can match MenuEvent IDs.
+    // Build menu items first so we can capture their IDs.
     let item_settings = MenuItem::new("Settings…", true, None);
     let item_pause = MenuItem::new("Pause", true, None);
     let item_resume = MenuItem::new("Resume", true, None);
@@ -33,28 +46,45 @@ pub fn run(state: Arc<WorkerState>) -> Result<()> {
     item_resume.set_enabled(state.is_paused());
 
     let icon = build_default_icon().context("building tray icon")?;
-    let _tray = TrayIconBuilder::new()
+    // Tray icon must outlive the event loop. We move it into the closure so
+    // it stays alive for the entire app lifetime.
+    let tray = TrayIconBuilder::new()
         .with_menu(Box::new(menu))
         .with_tooltip("discord_rich — Custom Rich Presence")
         .with_icon(icon)
         .build()
         .context("creating tray icon")?;
 
-    let menu_channel = MenuEvent::receiver();
-    let tray_channel = TrayIconEvent::receiver();
+    // Forward menu and tray events into the tao event loop. This is the
+    // critical wiring: without these handlers, clicks would queue on the
+    // global channels but our `ControlFlow::Wait` loop would never wake up.
+    let menu_proxy = event_loop.create_proxy();
+    MenuEvent::set_event_handler(Some(move |event| {
+        let _ = menu_proxy.send_event(UserEvent::Menu(event));
+    }));
 
-    let id_settings = item_settings.id().clone();
-    let id_pause = item_pause.id().clone();
-    let id_resume = item_resume.id().clone();
-    let id_reload = item_reload.id().clone();
-    let id_quit = item_quit.id().clone();
+    let tray_proxy = event_loop.create_proxy();
+    TrayIconEvent::set_event_handler(Some(move |event| {
+        let _ = tray_proxy.send_event(UserEvent::Tray(event));
+    }));
 
-    event_loop.run(move |_event, _, control_flow| {
+    let id_settings: MenuId = item_settings.id().clone();
+    let id_pause: MenuId = item_pause.id().clone();
+    let id_resume: MenuId = item_resume.id().clone();
+    let id_reload: MenuId = item_reload.id().clone();
+    let id_quit: MenuId = item_quit.id().clone();
+
+    event_loop.run(move |event, _, control_flow| {
+        // Sleep until the next user-initiated event.
         *control_flow = ControlFlow::Wait;
 
-        while let Ok(menu_event) = menu_channel.try_recv() {
+        // Hold the tray icon alive for the loop's whole lifetime.
+        let _keep_tray_alive = &tray;
+
+        if let Event::UserEvent(UserEvent::Menu(menu_event)) = event {
             let id = menu_event.id();
             if id == &id_settings {
+                log::debug!("tray: Settings clicked");
                 settings_ui::open(state.clone());
             } else if id == &id_pause {
                 state.set_paused(true);
@@ -75,19 +105,15 @@ pub fn run(state: Arc<WorkerState>) -> Result<()> {
                     Err(e) => log::warn!("reload failed: {e:#}"),
                 }
             } else if id == &id_quit {
+                log::info!("tray: Quit requested");
                 state.request_shutdown();
                 *control_flow = ControlFlow::Exit;
             }
         }
-
-        // Drain tray events to keep the channel from filling up.
-        while let Ok(_event) = tray_channel.try_recv() {}
+        // Tray-icon-only events (left/right click on the icon itself) are
+        // ignored: the menu attached to the icon already handles right-click.
     });
 }
-
-/// Custom user event placeholder for the tao event loop. We don't actually
-/// publish any of these yet, but the type is required for `with_user_event`.
-enum UserEvent {}
 
 /// Generate a 32×32 RGBA icon at startup. We avoid bundling a PNG so the
 /// project compiles cleanly without any binary assets in the repo.
